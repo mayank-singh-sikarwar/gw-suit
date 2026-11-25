@@ -20,7 +20,7 @@ fi
 
 # 2. Generic patterns: user home paths, email addresses, IPv4 addresses.
 generic='([A-Za-z]:[\\/]+Users[\\/]|/c/Users/|/home/[a-z][a-z0-9_-]+|/Users/[A-Za-z][A-Za-z0-9_-]+/|[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}|\b([0-9]{1,3}\.){3}[0-9]{1,3}\b)'
-allow='(users\.noreply\.github\.com|noreply@github\.com|/home/runner|127\.0\.0\.1|0\.0\.0\.0)'
+allow='(git@github.com:|users\.noreply\.github\.com|noreply@github\.com|/home/runner|127\.0\.0\.1|0\.0\.0\.0)'
 hits="$(git grep --cached -I -n -E "$generic" -- . "$self" 2>/dev/null | grep -Ev "$allow")"
 [ -n "$hits" ] && { report "generic pattern match:"; printf '%s\n' "$hits" >&2; }
 
