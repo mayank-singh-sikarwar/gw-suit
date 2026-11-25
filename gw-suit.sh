@@ -3,13 +3,13 @@
 # Works in bash >= 4 and zsh >= 5.8. Defines functions only.
 #
 # Config (all optional):
-#   GW_ROOT          parent folder for gwclone (default: $PROJECTS_ROOT, else $PWD)
+#   GW_ROOT          folder gwclone puts projects in (default: $PROJECTS_ROOT, else $PWD)
 #   GW_BASE_PREFIX   prefix for short base names, e.g. "feature/sprint_" (default: none)
 #   GW_TASK_PREFIX   branch/folder prefix for gwtask/gwclean (default: "wip/")
 #   GW_CLEAN_TARGET  default base for gwclean
 
 # shellcheck disable=SC2034  # read by users and the installer
-GW_SUIT_VERSION="1.0.0"
+GW_SUIT_VERSION="1.1.0"
 
 # ---------------------------------------------------------------- helpers ----
 
@@ -83,27 +83,34 @@ _gw_repo_name() {
 
 # --------------------------------------------------------------- commands ----
 
-# gwclone <url> [dest]
-#   Clone <url> into the bare layout <dest>/{.bare,.git,<default-branch>/}.
-#   dest: a name (placed under $GW_ROOT, else $PROJECTS_ROOT, else $PWD) or any path containing "/".
+# gwclone <url> [folder]
+#   Clone <url> into the bare layout <folder>/<repo>/{.bare,.git,<default-branch>/}.
+#   folder: the folder the project goes into. A relative folder is placed under
+#   $GW_ROOT (else $PROJECTS_ROOT, else $PWD); an absolute one is used as it is.
 gwclone() {
-  local url="${1:-}" dest="${2:-}" name parent def
-  [ -n "$url" ] || { _gw_err "usage: gwclone <url> [dest]"; return 1; }
+  local url="${1:-}" folder="${2:-}" name base dest created p def
+  [ -n "$url" ] || { _gw_err "usage: gwclone <url> [folder]"; return 1; }
   name="$(_gw_repo_name "$url")"
   [ -n "$name" ] || { _gw_err "gwclone: cannot derive a project name from: $url"; return 1; }
-  parent="${GW_ROOT:-${PROJECTS_ROOT:-$PWD}}"
-  case "$dest" in
-    "") dest="$parent/$name" ;;
-    */*) ;;
-    *) dest="$parent/$dest" ;;
+  base="${GW_ROOT:-${PROJECTS_ROOT:-$PWD}}"
+  case "$folder" in
+    "") folder="$base" ;;
+    /*|[A-Za-z]:/*) ;;
+    *) folder="$base/$folder" ;;
   esac
+  dest="$folder/$name"
   [ -e "$dest" ] && { _gw_err "gwclone: destination exists: $dest"; return 1; }
-  mkdir -p "$dest" && dest="$(cd "$dest" && pwd)" || return 1
+  # remember the highest folder we create, so a failed clone leaves nothing behind
+  p="$dest"
+  while [ ! -e "$p" ]; do created="$p"; p="$(dirname "$p")"; done
+  mkdir -p "$dest" || return 1
 
   if ! git clone --bare --quiet "$url" "$dest/.bare"; then
-    rmdir "$dest" 2>/dev/null
+    p="$dest"
+    while rmdir "$p" 2>/dev/null && [ "$p" != "$created" ]; do p="$(dirname "$p")"; done
     return 1
   fi
+  dest="$(cd "$dest" && pwd)" || return 1
   printf 'gitdir: ./.bare\n' > "$dest/.git"
   git -C "$dest" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
   git -C "$dest" config worktree.useRelativePaths true   # ignored before git 2.48

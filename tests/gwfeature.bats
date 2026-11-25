@@ -27,7 +27,7 @@ setup() { setup_common; make_origin main feature/sprint_16 release; clone_projec
   gw "gwfeature release && pwd"
   [ "$status" -eq 0 ]
   [[ "$output" == *"already exists"* ]]
-  [[ "${lines[${#lines[@]}-1]}" == */proj/release ]]
+  [[ "${lines[${#lines[@]}-1]}" == */origin/release ]]
 }
 
 @test "gwfeature creates a tracking branch for an origin-only branch" {

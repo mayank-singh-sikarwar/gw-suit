@@ -18,7 +18,7 @@ Works in **bash** (Linux, Git Bash on Windows) and **zsh** (macOS). Needs `git` 
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/v1.0.0/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/v1.1.0/install.sh | bash
 ```
 
 Then open a new terminal and check: `type gwclone`.
@@ -42,7 +42,7 @@ Installer options (environment variables):
 |---|---|
 | `GW_SUIT_DRY_RUN=1` | show what would change, write nothing |
 | `GW_SUIT_RC=~/.bashrc` | choose the rc file(s) to edit; separate several with `:` |
-| `GW_SUIT_REF=v1.0.0` | install a specific tag |
+| `GW_SUIT_REF=v1.1.0` | install a specific tag |
 
 Example: `curl -fsSL …/install.sh | GW_SUIT_DRY_RUN=1 bash`
 
@@ -51,7 +51,7 @@ Example: `curl -fsSL …/install.sh | GW_SUIT_DRY_RUN=1 bash`
 The quick install trusts HTTPS and this GitHub repository. If you want proof that `install.sh` is exactly the file this repository's release workflow published for a tag, verify it before running it. Needs the [GitHub CLI](https://cli.github.com/) 2.81 or newer.
 
 ```bash
-tag=v1.0.0
+tag=v1.1.0
 repo=mayank-singh-sikarwar/gw-suit
 curl -fsSLO "https://github.com/$repo/releases/download/$tag/install.sh"
 
@@ -83,7 +83,7 @@ It removes only the marked block (after another backup) and the install folder. 
 
 | Command | What it does |
 |---|---|
-| `gwclone <url> [dest]` | Clone a repo into the bare layout and check out its default branch |
+| `gwclone <url> [folder]` | Clone a repo into the bare layout, as `[folder]/<repo>`, and check out its default branch |
 | `gwadd <branch> [base]` | Add a worktree for a branch (create it from `base`, default: origin's default branch, if it doesn't exist) |
 | `gwfeature <base>` | Check out a shared branch (e.g. a feature or sprint branch) as its own worktree, or `cd` to it |
 | `gwtask <base> <slug> [--push]` | Start a task: new branch `wip/<slug>` from `base`, in its own worktree |
@@ -95,12 +95,23 @@ Every command except `gwclone` works from anywhere inside a project: it finds th
 
 ```bash
 cd ~/code
-gwclone git@github.com:someone/my-project.git        # -> ~/code/my-project/main
-gwclone https://github.com/someone/lib.git mylib     # -> ~/code/mylib/main
-gwclone https://github.com/someone/lib.git ~/x/lib   # anything with a "/" is used as a path
+gwclone git@github.com:someone/my-project.git           # -> ~/code/my-project/main
+gwclone https://github.com/someone/lib.git libs         # -> ~/code/libs/lib/main
+gwclone https://github.com/someone/lib.git ~/x/libs     # -> ~/x/libs/lib/main
 ```
 
-The project goes into the current folder, unless you set `GW_ROOT`. If you keep code in several places (say, personal and work), just `cd` to the right place first, or pass the full path.
+The optional second argument is the folder the project goes into. The project folder always has the repo's name.
+
+- With no folder, the project goes into the current folder, or into `GW_ROOT` if you set it.
+- A relative folder goes inside the current folder, or inside `GW_ROOT` if you set it.
+- An absolute folder (one starting with `/` or `~`) is used as it is.
+- Missing folders are created.
+
+If you keep code in several places (say, personal and work), set `GW_ROOT` to the common parent and pass the sub-folder: with `GW_ROOT=~/projects`, `gwclone <url> phd/code` gives `~/projects/phd/code/<repo>/main`.
+
+To rename a project later, move its folder with `mv`. `gwclone` stores worktree paths as relative paths, so the move does not break them (git 2.48 or newer).
+
+**Use forward slashes in paths, also in Git Bash on Windows.** Bash treats `\` as an escape character and removes it before `gwclone` sees the path, so `phd\code` arrives as `phdcode`.
 
 ### gwadd
 
@@ -149,7 +160,7 @@ Set these in your rc file, **below** the gw-suit block.
 
 | Variable | Default | Used by | Meaning |
 |---|---|---|---|
-| `GW_ROOT` | current folder | `gwclone` | Where new projects go (`PROJECTS_ROOT` is also honoured) |
+| `GW_ROOT` | current folder | `gwclone` | Where new projects go, and where relative folders start from (`PROJECTS_ROOT` is also read) |
 | `GW_BASE_PREFIX` | *(none)* | `gwtask`, `gwfeature`, `gwclean` | Prefix added to short base names (see below) |
 | `GW_TASK_PREFIX` | `wip/` | `gwtask`, `gwclean` | Branch and folder prefix for task branches |
 | `GW_CLEAN_TARGET` | *(none)* | `gwclean` | Base to use when you run `gwclean` with no argument |
