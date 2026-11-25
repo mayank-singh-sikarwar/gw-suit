@@ -199,11 +199,15 @@ gwtask() {
 }
 
 # gwclean [base] [--apply] [--force]
-#   Clean up ${GW_TASK_PREFIX:-wip/}* branches merged into the base (default: $GW_CLEAN_TARGET).
-#   Dry run unless --apply. Skips dirty worktrees and branches `git branch -d` refuses,
-#   unless --force. Never removes the worktree you are standing in.
+#   Clean up ${GW_TASK_PREFIX:-wip/}* branches whose commits are all in the base
+#   (default: $GW_CLEAN_TARGET): remove their worktrees and delete the branches.
+#   Dry run unless --apply. Deleted branches lose no commits (they are all in the base);
+#   each deletion prints the commit id so `git branch <name> <id>` restores it.
+#   Worktrees with uncommitted changes are skipped unless --force (that data is unrecoverable).
+#   Never removes the worktree you are standing in.
+#   Detects merge-commit and fast-forward merges; squash/rebase merges are not detected.
 gwclean() {
-  local arg="" apply=0 force=0 opt root cur base taskp list b dir out
+  local arg="" apply=0 force=0 opt root cur base taskp list b sha short dir out
   local removed=0 skipped=0 failed=0
   for opt in "$@"; do
     case "$opt" in
@@ -231,9 +235,10 @@ gwclean() {
 
   [ "$apply" -eq 1 ] || echo "gwclean: dry run, nothing will change (pass --apply to act)"
   echo "Checking ${taskp}* branches merged into $base..."
-  list="$(git -C "$root" for-each-ref --format='%(refname:short)' --merged "$base" refs/heads/)"
+  list="$(git -C "$root" for-each-ref --merged "$base" \
+          --format='%(refname:short) %(objectname) %(objectname:short)' refs/heads/)"
 
-  while IFS= read -r b; do
+  while IFS=' ' read -r b sha short; do
     case "$b" in
       "$taskp"*) ;;
       *) continue ;;
@@ -244,12 +249,12 @@ gwclean() {
         echo "skip  $b: it is the current worktree"; skipped=$((skipped + 1)); continue
       fi
       if [ "$force" -eq 0 ] && [ -n "$(git -C "$dir" status --porcelain </dev/null 2>/dev/null)" ]; then
-        echo "skip  $b: uncommitted changes in $dir (--force to discard)"; skipped=$((skipped + 1)); continue
+        echo "skip  $b: uncommitted changes in $dir (--force to discard them)"; skipped=$((skipped + 1)); continue
       fi
     fi
     if [ "$apply" -eq 0 ]; then
       [ -n "$dir" ] && echo "[dry-run] would remove worktree: $dir"
-      echo "[dry-run] would delete branch: $b"; removed=$((removed + 1))
+      echo "[dry-run] would delete branch: $b ($short)"; removed=$((removed + 1))
       continue
     fi
     if [ -n "$dir" ]; then
@@ -260,13 +265,12 @@ gwclean() {
       fi || { echo "FAIL  $b: could not remove $dir: $out"; failed=$((failed + 1)); continue; }
       echo "removed worktree: $dir"
     fi
-    if git -C "$root" branch -d "$b" </dev/null >/dev/null 2>&1; then
-      echo "deleted branch: $b"; removed=$((removed + 1))
-    elif [ "$force" -eq 1 ] && git -C "$root" branch -D "$b" </dev/null >/dev/null 2>&1; then
-      echo "deleted branch (forced, merged into $base): $b"; removed=$((removed + 1))
+    # Delete only if the branch still points at the commit verified as merged.
+    if [ "$(git -C "$root" rev-parse --verify --quiet "refs/heads/$b" </dev/null)" = "$sha" ] &&
+       git -C "$root" branch -D "$b" </dev/null >/dev/null 2>&1; then
+      echo "deleted branch: $b (was $short; restore: git branch $b $short)"; removed=$((removed + 1))
     else
-      echo "skip  $b: branch kept, git branch -d refused (not merged into HEAD/upstream; --force to delete)"
-      skipped=$((skipped + 1))
+      echo "FAIL  $b: branch moved or could not be deleted; kept"; failed=$((failed + 1))
     fi
   done <<EOF_GW
 $list

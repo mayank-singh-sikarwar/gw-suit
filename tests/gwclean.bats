@@ -45,9 +45,7 @@ snapshot() { git -C "$PROJ" worktree list --porcelain; git -C "$PROJ" branch --l
   [ "$before" = "$(snapshot)" ]
 }
 
-@test "--apply removes clean merged worktrees (several: zsh split regression) and keeps unmerged" {
-  git -C "$PROJ" branch -q --set-upstream-to=origin/feature/sprint_16 wip/a
-  git -C "$PROJ" branch -q --set-upstream-to=origin/feature/sprint_16 wip/b
+@test "--apply removes clean merged worktrees and branches (several: zsh split regression), keeps unmerged" {
   gw "gwclean 16 --apply"
   [ "$status" -eq 0 ]
   [ ! -e "$PROJ/wip/a" ]
@@ -58,15 +56,30 @@ snapshot() { git -C "$PROJ" worktree list --porcelain; git -C "$PROJ" branch --l
   git -C "$PROJ" show-ref --verify --quiet refs/heads/wip/open
 }
 
-@test "--apply keeps a branch that git branch -d refuses; --force deletes it" {
+@test "--apply deletes merged branches with no upstream or a deleted upstream (no --force needed)" {
+  # wip/a: pushed, then remote branch deleted (GitHub auto-delete after PR merge)
+  git -C "$PROJ/wip/a" push -q -u origin wip/a
+  git -C "$TEST_TMP/origin.git" branch -q -D wip/a
+  # wip/b: never pushed (no upstream); neither is merged into main/HEAD
   gw "gwclean 16 --apply"
   [ "$status" -eq 0 ]
-  [ ! -e "$PROJ/wip/a" ]
-  git -C "$PROJ" show-ref --verify --quiet refs/heads/wip/a
-  [[ "$output" == *"branch kept"* ]]
-  gw "gwclean 16 --apply --force"
-  [ "$status" -eq 0 ]
   ! git -C "$PROJ" show-ref --verify --quiet refs/heads/wip/a
+  ! git -C "$PROJ" show-ref --verify --quiet refs/heads/wip/b
+  [[ "$output" != *"--force"* ]]
+}
+
+@test "--apply prints a restore command that brings the branch back" {
+  sha="$(git -C "$PROJ" rev-parse --short wip/a)"
+  gw "gwclean 16 --apply"
+  [[ "$output" == *"deleted branch: wip/a (was $sha; restore: git branch wip/a $sha)"* ]]
+  git -C "$PROJ" branch wip/a "$sha"
+  [ "$(git -C "$PROJ" rev-parse --short wip/a)" = "$sha" ]
+}
+
+@test "dry run lists the commit id of each branch" {
+  sha="$(git -C "$PROJ" rev-parse --short wip/b)"
+  gw "gwclean 16"
+  [[ "$output" == *"would delete branch: wip/b ($sha)"* ]]
 }
 
 @test "dirty worktree is skipped by --apply, removed by --apply --force" {
