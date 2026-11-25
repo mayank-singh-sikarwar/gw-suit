@@ -17,11 +17,11 @@ setup() {
   # merge a and b into the sprint branch on origin
   git -C "$PROJ" push -q origin wip/a:feature/sprint_16
   git -C "$PROJ" push -q origin wip/b:refs/heads/tmp
-  git -C "$TEST_TMP/src" fetch -q "$(native "$TEST_TMP/origin.git")" feature/sprint_16 tmp
-  git -C "$TEST_TMP/src" checkout -q -b s FETCH_HEAD 2>/dev/null || true
-  git -C "$TEST_TMP/src" checkout -q -B s "$(git -C "$TEST_TMP/origin.git" rev-parse feature/sprint_16)"
-  git -C "$TEST_TMP/src" merge -q --no-edit "$(git -C "$TEST_TMP/origin.git" rev-parse tmp)"
-  git -C "$TEST_TMP/src" push -q "$(native "$TEST_TMP/origin.git")" s:feature/sprint_16
+  o="$(native "$TEST_TMP/origin.git")"
+  git -C "$TEST_TMP/src" fetch -q "$o" '+refs/heads/*:refs/remotes/o/*'
+  git -C "$TEST_TMP/src" checkout -q -B s o/feature/sprint_16
+  git -C "$TEST_TMP/src" merge -q --no-edit o/tmp
+  git -C "$TEST_TMP/src" push -q "$o" s:feature/sprint_16
   cd "$PROJ/main"
 }
 
