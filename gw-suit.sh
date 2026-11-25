@@ -80,3 +80,120 @@ _gw_repo_name() {
   s="${s##*:}"
   printf '%s\n' "${s%.git}"
 }
+
+# --------------------------------------------------------------- commands ----
+
+# gwclone <url> [dest]
+#   Clone <url> into the bare layout <dest>/{.bare,.git,<default-branch>/}.
+#   dest: a name (placed under $GW_ROOT, else $PROJECTS_ROOT, else $PWD) or any path containing "/".
+gwclone() {
+  local url="${1:-}" dest="${2:-}" name parent def
+  [ -n "$url" ] || { _gw_err "usage: gwclone <url> [dest]"; return 1; }
+  name="$(_gw_repo_name "$url")"
+  [ -n "$name" ] || { _gw_err "gwclone: cannot derive a project name from: $url"; return 1; }
+  parent="${GW_ROOT:-${PROJECTS_ROOT:-$PWD}}"
+  case "$dest" in
+    "") dest="$parent/$name" ;;
+    */*) ;;
+    *) dest="$parent/$dest" ;;
+  esac
+  [ -e "$dest" ] && { _gw_err "gwclone: destination exists: $dest"; return 1; }
+  mkdir -p "$dest" && dest="$(cd "$dest" && pwd)" || return 1
+
+  if ! git clone --bare --quiet "$url" "$dest/.bare"; then
+    rmdir "$dest" 2>/dev/null
+    return 1
+  fi
+  printf 'gitdir: ./.bare\n' > "$dest/.git"
+  git -C "$dest" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+  git -C "$dest" config worktree.useRelativePaths true   # ignored before git 2.48
+  git -C "$dest" fetch --quiet origin || return 1
+  git -C "$dest" remote set-head origin --auto >/dev/null 2>&1
+
+  def="$(git -C "$dest" symbolic-ref --quiet --short refs/remotes/origin/HEAD)"
+  def="${def#origin/}"
+  [ -n "$def" ] || { _gw_err "gwclone: could not determine the default branch"; return 1; }
+  git -C "$dest" worktree add --quiet "$dest/$def" "$def" || return 1
+  git -C "$dest" branch --quiet --set-upstream-to="origin/$def" "$def"
+  cd "$dest/$def" || return 1
+  echo "Ready: $dest/$def"
+}
+
+# gwadd <branch> [base]
+#   New sibling worktree <root>/<branch>. Checks out <branch> if it exists locally or on origin,
+#   otherwise creates it from [base] (default: origin's default branch).
+gwadd() {
+  local branch="${1:-}" base="${2:-}" root
+  [ -n "$branch" ] || { _gw_err "usage: gwadd <branch> [base]"; return 1; }
+  root="$(_gw_root gwadd)" || return 1
+  [ -e "$root/$branch" ] && { _gw_err "gwadd: folder exists: $root/$branch"; return 1; }
+  if [ -z "$base" ]; then
+    base="$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD)"
+    base="${base#origin/}"
+  fi
+  if _gw_has_branch "$root" "$branch"; then
+    git -C "$root" worktree add --quiet "$root/$branch" "$branch" || return 1
+  else
+    git -C "$root" worktree add --quiet -b "$branch" "$root/$branch" "$base" || return 1
+  fi
+  cd "$root/$branch" || return 1
+  echo "Ready: $root/$branch"
+}
+
+# gwfeature <base>
+#   Check out the base branch (see GW_BASE_PREFIX) as a worktree at <root>/<branch>,
+#   or cd into it if it already exists.
+gwfeature() {
+  local arg="${1:-}" root name dir
+  [ -n "$arg" ] || { _gw_err "usage: gwfeature <base>"; return 1; }
+  root="$(_gw_root gwfeature)" || return 1
+  name="$(_gw_base_name "$arg")"
+  dir="$root/$name"
+  if [ -e "$dir" ]; then
+    echo "Worktree already exists: $dir"
+    cd "$dir" || return 1
+    return 0
+  fi
+  git -C "$root" fetch --quiet origin || return 1
+  if git -C "$root" show-ref --verify --quiet "refs/heads/$name"; then
+    git -C "$root" worktree add --quiet "$dir" "$name" || return 1
+  elif git -C "$root" show-ref --verify --quiet "refs/remotes/origin/$name"; then
+    git -C "$root" worktree add --quiet --track -b "$name" "$dir" "origin/$name" || return 1
+  else
+    _gw_err "gwfeature: branch '$name' not found locally or on origin"; return 1
+  fi
+  cd "$dir" || return 1
+  echo "Ready: $dir"
+  echo "Branch: $(git status -sb | head -1 | sed 's/^## //')"
+}
+
+# gwtask <base> <slug> [--push]
+#   New ${GW_TASK_PREFIX:-wip/}<slug> branch + worktree from the base (origin preferred).
+#   --push also creates the branch on origin now.
+gwtask() {
+  local arg="${1:-}" slug="${2:-}" push="${3:-}" root b dir base
+  if [ -z "$arg" ] || [ -z "$slug" ] || { [ -n "$push" ] && [ "$push" != "--push" ]; }; then
+    _gw_err "usage: gwtask <base> <slug> [--push]"; return 1
+  fi
+  root="$(_gw_root gwtask)" || return 1
+  b="${GW_TASK_PREFIX:-wip/}$slug"
+  dir="$root/$b"
+  git check-ref-format --branch "$b" >/dev/null 2>&1 ||
+    { _gw_err "gwtask: invalid branch name: $b"; return 1; }
+  git -C "$root" show-ref --verify --quiet "refs/heads/$b" &&
+    { _gw_err "gwtask: branch $b already exists (git worktree list to find it)"; return 1; }
+  [ -e "$dir" ] && { _gw_err "gwtask: folder exists: $dir"; return 1; }
+
+  git -C "$root" fetch --quiet origin || return 1
+  base="$(_gw_base_ref "$root" "$arg")" ||
+    { _gw_err "gwtask: base '$(_gw_base_name "$arg")' not found on origin or locally"; return 1; }
+
+  git -C "$root" worktree add --quiet --no-track -b "$b" "$dir" "$base" || return 1
+  cd "$dir" || return 1
+  if [ "$push" = "--push" ]; then
+    git push --quiet -u origin "$b" || return 1
+  fi
+  echo "Ready: $dir (from $base)"
+  echo "Branch: $(git status -sb | head -1 | sed 's/^## //')"
+  [ "$push" = "--push" ] || echo "First push: git push -u origin $b"
+}
