@@ -197,3 +197,82 @@ gwtask() {
   echo "Branch: $(git status -sb | head -1 | sed 's/^## //')"
   [ "$push" = "--push" ] || echo "First push: git push -u origin $b"
 }
+
+# gwclean [base] [--apply] [--force]
+#   Clean up ${GW_TASK_PREFIX:-wip/}* branches merged into the base (default: $GW_CLEAN_TARGET).
+#   Dry run unless --apply. Skips dirty worktrees and branches `git branch -d` refuses,
+#   unless --force. Never removes the worktree you are standing in.
+gwclean() {
+  local arg="" apply=0 force=0 opt root cur base taskp list b dir out
+  local removed=0 skipped=0 failed=0
+  for opt in "$@"; do
+    case "$opt" in
+      --apply) apply=1 ;;
+      --force) force=1 ;;
+      --dry-run) ;;
+      -*) _gw_err "usage: gwclean [base] [--apply] [--force]"; return 1 ;;
+      *)
+        [ -z "$arg" ] || { _gw_err "usage: gwclean [base] [--apply] [--force]"; return 1; }
+        arg="$opt"
+        ;;
+    esac
+  done
+  [ -n "$arg" ] || arg="${GW_CLEAN_TARGET:-}"
+  [ -n "$arg" ] || { _gw_err "usage: gwclean [base] [--apply] [--force]  (or set GW_CLEAN_TARGET)"; return 1; }
+
+  root="$(_gw_root gwclean)" || return 1
+  cur="$(git rev-parse --path-format=absolute --show-toplevel 2>/dev/null)"
+  cd "$root" || return 1   # avoid holding a worktree open (Windows file locks)
+
+  git -C "$root" fetch --quiet --prune origin || return 1
+  base="$(_gw_base_ref "$root" "$arg")" ||
+    { _gw_err "gwclean: base '$(_gw_base_name "$arg")' not found"; return 1; }
+  taskp="${GW_TASK_PREFIX:-wip/}"
+
+  [ "$apply" -eq 1 ] || echo "gwclean: dry run, nothing will change (pass --apply to act)"
+  echo "Checking ${taskp}* branches merged into $base..."
+  list="$(git -C "$root" for-each-ref --format='%(refname:short)' --merged "$base" refs/heads/)"
+
+  while IFS= read -r b; do
+    case "$b" in
+      "$taskp"*) ;;
+      *) continue ;;
+    esac
+    dir="$(_gw_wt_path "$root" "$b" </dev/null)"
+    if [ -n "$dir" ]; then
+      if [ "$dir" = "$cur" ]; then
+        echo "skip  $b: it is the current worktree"; skipped=$((skipped + 1)); continue
+      fi
+      if [ "$force" -eq 0 ] && [ -n "$(git -C "$dir" status --porcelain </dev/null 2>/dev/null)" ]; then
+        echo "skip  $b: uncommitted changes in $dir (--force to discard)"; skipped=$((skipped + 1)); continue
+      fi
+    fi
+    if [ "$apply" -eq 0 ]; then
+      [ -n "$dir" ] && echo "[dry-run] would remove worktree: $dir"
+      echo "[dry-run] would delete branch: $b"; removed=$((removed + 1))
+      continue
+    fi
+    if [ -n "$dir" ]; then
+      if [ "$force" -eq 1 ]; then
+        out="$(git -C "$root" worktree remove --force "$dir" </dev/null 2>&1)"
+      else
+        out="$(git -C "$root" worktree remove "$dir" </dev/null 2>&1)"
+      fi || { echo "FAIL  $b: could not remove $dir: $out"; failed=$((failed + 1)); continue; }
+      echo "removed worktree: $dir"
+    fi
+    if git -C "$root" branch -d "$b" </dev/null >/dev/null 2>&1; then
+      echo "deleted branch: $b"; removed=$((removed + 1))
+    elif [ "$force" -eq 1 ] && git -C "$root" branch -D "$b" </dev/null >/dev/null 2>&1; then
+      echo "deleted branch (forced, merged into $base): $b"; removed=$((removed + 1))
+    else
+      echo "skip  $b: branch kept, git branch -d refused (not merged into HEAD/upstream; --force to delete)"
+      skipped=$((skipped + 1))
+    fi
+  done <<EOF_GW
+$list
+EOF_GW
+
+  [ "$apply" -eq 1 ] && git -C "$root" worktree prune
+  echo "gwclean: $([ "$apply" -eq 1 ] && echo removed || echo would-remove) $removed, skipped $skipped, failed $failed"
+  [ "$failed" -eq 0 ]
+}
