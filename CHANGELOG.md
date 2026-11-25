@@ -2,6 +2,16 @@
 
 All notable changes to this project are listed here. Versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-11-25
+
+### Changed
+- `gwclone <url> [folder]`: the second argument is now the folder the project goes into, not the project folder itself. The project folder always has the repo's name. For example, `gwclone <url> phd/code` gives `phd/code/<repo>/main`. Before, it gave `phd/code/main`.
+- `gwclone`: a relative folder now goes inside `GW_ROOT` when it is set. An absolute folder is used as it is.
+- `gwclone`: when a clone fails, it removes every folder it created, not only the last one.
+
+### Documentation
+- The README explains that paths need forward slashes, also in Git Bash. Bash removes backslashes before `gwclone` sees the path.
+
 ## [1.0.0] - 2026-11-25
 
 First public release. It packages a set of personal git worktree helpers.

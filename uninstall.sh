@@ -2,7 +2,7 @@
 # gw-suit uninstaller
 #
 #   ~/.local/share/gw-suit/uninstall.sh
-#   (or: curl -fsSL https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/v1.0.0/uninstall.sh | bash)
+#   (or: curl -fsSL https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/v1.1.0/uninstall.sh | bash)
 #
 # Removes exactly the "# >>> gw-suit >>>" ... "# <<< gw-suit <<<" block from each rc file
 # (after a backup) and deletes the install folder. Nothing else is touched. Safe to re-run.

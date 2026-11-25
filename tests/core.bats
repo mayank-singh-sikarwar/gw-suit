@@ -17,7 +17,7 @@ setup() { setup_common; }
 
 @test "GW_SUIT_VERSION is set and PROJECTS_ROOT is not exported" {
   gw 'echo "$GW_SUIT_VERSION"; env | grep -c "^PROJECTS_ROOT=" || true'
-  [ "${lines[0]}" = "1.0.0" ]
+  [ "${lines[0]}" = "1.1.0" ]
   [ "${lines[1]}" = "0" ]
 }
 

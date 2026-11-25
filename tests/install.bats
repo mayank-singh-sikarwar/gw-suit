@@ -13,12 +13,12 @@ setup() {
   [ "$status" -eq 0 ]
   [ -f "$HOME/$DEST_REL/gw-suit.sh" ]
   [ -x "$HOME/$DEST_REL/uninstall.sh" ]
-  [ "$(cat "$HOME/$DEST_REL/VERSION")" = "v1.0.0" ]
+  [ "$(cat "$HOME/$DEST_REL/VERSION")" = "v1.1.0" ]
   [ "$(count_blocks "$HOME/.bashrc")" -eq 1 ]
   grep -qx 'export KEEP=1' "$HOME/.bashrc"
   ls "$HOME"/.bashrc.gw-suit.bak.* >/dev/null
   run bash -ic 'type gwclone >/dev/null && echo "$GW_SUIT_VERSION"' </dev/null
-  [[ "$output" == *"1.0.0"* ]]
+  [[ "$output" == *"1.1.0"* ]]
 }
 
 @test "block keeps \$HOME symbolic" {

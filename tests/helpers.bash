@@ -48,12 +48,12 @@ gw() {
   fi
 }
 
-# clone_project -> gwclone ORIGIN into $TEST_TMP/proj (requires make_origin)
+# clone_project -> gwclone ORIGIN; the project is $TEST_TMP/origin (requires make_origin)
 clone_project() {
   cd "$TEST_TMP" || return 1
-  gw "gwclone '$ORIGIN' proj"
+  gw "gwclone '$ORIGIN'"
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  PROJ="$TEST_TMP/proj"
+  PROJ="$TEST_TMP/origin"
 }
 
 # commit_in <dir> <msg> -> empty commit in dir
