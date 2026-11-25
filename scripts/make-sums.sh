@@ -17,8 +17,9 @@ sums="$(printf '%s  %s\n%s  %s' "$(sha gw-suit.sh)" gw-suit.sh "$(sha uninstall.
 
 if [ -f install.sh ]; then
   grep -q '^# >>> sums >>>' install.sh || { echo "make-sums: no sums block in install.sh" >&2; exit 1; }
-  awk -v sums="$sums" '
-    /^# >>> sums >>>/ { print; print "GWI_SUMS='\''" sums "'\''"; skip = 1; next }
+  # passed via the environment: BSD awk rejects newlines in -v values
+  GW_SUMS="$sums" awk '
+    /^# >>> sums >>>/ { print; print "GWI_SUMS='\''" ENVIRON["GW_SUMS"] "'\''"; skip = 1; next }
     /^# <<< sums <<</ { skip = 0 }
     !skip { print }' install.sh > install.sh.tmp
   cat install.sh.tmp > install.sh   # keep file mode
