@@ -182,7 +182,7 @@ The bare-repo layout and the ideas behind these commands come from:
 - [How to use git worktree and in a clean way](https://morgan.cugerone.com/blog/how-to-use-git-worktree-and-in-a-clean-way/), Morgan Cugerone: `.bare` folder + `gitdir:` pointer file, per-worktree dependencies
 - [Git Worktrees Step-By-Step](https://infrequently.org/2021/07/worktrees-step-by-step/), Alex Russell: step-by-step recipe, push `--set-upstream`, Git LFS note
 - [Sliced bread: git-worktree and bare repo](https://blog.cryptomilk.org/?p=782), Andreas Schneider: fetch refspec fix, git aliases
-- [PSModule: Git Worktrees](https://psmodule.io/docs/Ways-of-Working/Git-Worktrees/): team convention, clean default-branch worktree, upstream setup
+- PSModule: Git Worktrees (psmodule.io, page no longer online): team convention, clean default-branch worktree, upstream setup
 
 **Scripts and tools**
 - [Setup Git Worktree gist](https://gist.github.com/peterneave/3f9514f66de59599f9a8cdfc74a4a443), Peter Neave: the bare-clone idea behind `gwclone` (gw-suit's version is an independent implementation)
@@ -190,7 +190,7 @@ The bare-repo layout and the ideas behind these commands come from:
 - [worktree-manager](https://github.com/jarredkenny/worktree-manager): CLI including in-place conversion of an existing clone
 
 **Known issues**
-- [Relative worktree paths issue](https://claudeissues.com/issue/24188-session-resume-picker-fails-with-git-worktree-relative-paths): tool incompatibility with `worktree.useRelativePaths` and how to revert it
+- Relative worktree paths issue (community issue write-up, no longer online): tool incompatibility with `worktree.useRelativePaths` and how to revert it
 
 ## License
 
