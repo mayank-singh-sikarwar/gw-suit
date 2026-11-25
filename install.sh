@@ -1,0 +1,231 @@
+#!/usr/bin/env bash
+# gw-suit installer
+#
+#   curl -fsSL https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/v1.0.0/install.sh | bash
+#
+# Options (environment variables):
+#   GW_SUIT_REF        tag or branch to install (default: the tag this installer was released with)
+#   GW_SUIT_BASE_URL   where to download files from (default: raw GitHub at GW_SUIT_REF)
+#   GW_SUIT_RC         rc file(s) to edit, separated by ":" (default: ~/.zshrc and/or ~/.bashrc)
+#   GW_SUIT_DRY_RUN=1  show what would change, write nothing
+#
+# Safety: everything below is a function that only runs on the very last line, so a
+# truncated download executes nothing. Downloads are checked against SHA256SUMS before
+# anything is written. rc files are backed up and only a marked block is ever touched.
+# Runs on bash 3.2+ (macOS system bash), Git Bash and Linux bash.
+
+# shellcheck disable=SC2088,SC2016  # literal "~" and "$HOME" text is matched on purpose
+GWI_DEFAULT_REF="v1.0.0"
+GWI_BEGIN='# >>> gw-suit >>>  (managed by the gw-suit installer; remove with uninstall.sh)'
+GWI_END='# <<< gw-suit <<<'
+GWI_FILES="gw-suit.sh uninstall.sh"
+
+_gwi_say()  { printf 'gw-suit: %s\n' "$*"; }
+_gwi_warn() { printf 'gw-suit: warning: %s\n' "$*" >&2; }
+_gwi_die()  { printf 'gw-suit: error: %s\n' "$*" >&2; exit 1; }
+
+_gwi_sha() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  else
+    shasum -a 256 "$1" | cut -d' ' -f1
+  fi
+}
+
+# _gwi_block <install-dir> -> the rc block, with $HOME kept symbolic
+_gwi_block() {
+  local p="$1"
+  case "$p" in
+    "$HOME"/*) p="\$HOME/${p#"$HOME"/}" ;;
+  esac
+  printf '%s\n%s\n%s\n' "$GWI_BEGIN" \
+    "if [ -f \"$p/gw-suit.sh\" ]; then . \"$p/gw-suit.sh\"; fi" "$GWI_END"
+}
+
+_gwi_has_block() { [ -f "$1" ] && grep -q '^# >>> gw-suit >>>' "$1"; }
+
+_gwi_current_block() {
+  awk '/^# >>> gw-suit >>>/{f=1} f{print} /^# <<< gw-suit <<<\r?$/{f=0}' "$1" | tr -d '\r'
+}
+
+_gwi_backup() {
+  local b
+  b="$1.gw-suit.bak.$(date +%Y%m%d%H%M%S)"
+  [ -e "$b" ] && b="$b.$$"
+  cp -p "$1" "$b"
+  _gwi_say "backed up $1 -> $b"
+}
+
+# _gwi_expand <path> -> expand a leading ~ or $HOME
+_gwi_expand() {
+  case "$1" in
+    "~") printf '%s\n' "$HOME" ;;
+    "~/"*) printf '%s\n' "$HOME/${1#"~/"}" ;;
+    '$HOME/'*) printf '%s\n' "$HOME/${1#'$HOME/'}" ;;
+    '${HOME}/'*) printf '%s\n' "$HOME/${1#'${HOME}/'}" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+
+# _gwi_rc_files -> one rc path per line
+_gwi_rc_files() {
+  local sh os rc
+  if [ -n "${GW_SUIT_RC:-}" ]; then
+    printf '%s\n' "$GW_SUIT_RC" | tr ':' '\n' | while IFS= read -r rc; do
+      [ -n "$rc" ] && _gwi_expand "$rc"
+    done
+    return 0
+  fi
+  sh="$(basename "${SHELL:-}")"
+  os="$(uname -s)"
+  if [ "$os" = Darwin ] || [ "$sh" = zsh ] || [ -f "$HOME/.zshrc" ]; then
+    printf '%s\n' "$HOME/.zshrc"
+  fi
+  if [ -f "$HOME/.bashrc" ] || [ "$sh" = bash ]; then
+    printf '%s\n' "$HOME/.bashrc"
+  fi
+}
+
+# _gwi_legacy <rc> <install-dir> -> warn about lines sourcing another file that defines gwclone
+_gwi_legacy() {
+  local rc="$1" dest="$2" line n f
+  [ -f "$rc" ] || return 0
+  grep -nE '^[[:space:]]*(source|\.)[[:space:]]+' "$rc" | while IFS= read -r line; do
+    n="${line%%:*}"
+    f="$(printf '%s\n' "${line#*:}" | tr -d '\r' |
+         sed -E 's/^[[:space:]]*(source|\.)[[:space:]]+//; s/[[:space:]].*$//; s/^["'\'']//; s/["'\'']$//')"
+    f="$(_gwi_expand "$f")"
+    [ "$f" = "$dest/gw-suit.sh" ] && continue
+    if [ -f "$f" ] && grep -qE '^[[:space:]]*(function[[:space:]]+)?gwclone[[:space:]]*\(' "$f"; then
+      _gwi_warn "$rc line $n sources $f, which also defines gwclone (old helpers?)."
+      _gwi_warn "  Left unchanged. Whichever is sourced last wins; remove that line when you are ready."
+    fi
+  done
+}
+
+_gwi_state_set() {
+  local state="$1/state" rc="$2" flag="$3"
+  if [ -f "$state" ] && cut -f2- "$state" | grep -qxF "$rc"; then
+    return 0
+  fi
+  printf '%s\t%s\n' "$flag" "$rc" >> "$state"
+}
+
+# _gwi_install_rc <rc> <install-dir>
+_gwi_install_rc() {
+  local rc="$1" dest="$2" want flag tmp
+  want="$(_gwi_block "$dest")"
+  if _gwi_has_block "$rc"; then
+    if [ "$(_gwi_current_block "$rc")" = "$want" ]; then
+      _gwi_say "$rc: already set up"
+      return 0
+    fi
+    _gwi_backup "$rc"
+    tmp="$rc.gw-suit.tmp"
+    printf '%s\n' "$want" > "$tmp.blk"
+    awk -v BINMODE=3 -v blk="$tmp.blk" '
+      /^# >>> gw-suit >>>/ { while ((getline l < blk) > 0) print l; skip = 1; next }
+      skip && /^# <<< gw-suit <<<\r?$/ { skip = 0; next }
+      !skip { print }' "$rc" > "$tmp"
+    cat "$tmp" > "$rc"
+    rm -f "$tmp" "$tmp.blk"
+    _gwi_say "$rc: updated the gw-suit block"
+    return 0
+  fi
+  if [ -e "$rc" ]; then
+    _gwi_backup "$rc"
+    if [ -z "$(tail -c 1 "$rc")" ]; then
+      flag="plain"
+    else
+      flag="nl"
+      printf '\n' >> "$rc"
+    fi
+  else
+    flag="created"
+  fi
+  printf '%s\n' "$want" >> "$rc"
+  _gwi_state_set "$dest" "$rc" "$flag"
+  _gwi_say "$rc: added the gw-suit block"
+}
+
+_gwi_cleanup() {
+  local f
+  [ -n "${GWI_TMP:-}" ] && [ -d "$GWI_TMP" ] || return 0
+  for f in $GWI_FILES SHA256SUMS; do rm -f "$GWI_TMP/$f"; done
+  rmdir "$GWI_TMP" 2>/dev/null || true
+}
+
+gw_suit_install() {
+  set -eu
+  local ref="${GW_SUIT_REF:-$GWI_DEFAULT_REF}"
+  local base_url="${GW_SUIT_BASE_URL:-https://raw.githubusercontent.com/mayank-singh-sikarwar/gw-suit/$ref}"
+  local dest="${XDG_DATA_HOME:-$HOME/.local/share}/gw-suit"
+  local dry="${GW_SUIT_DRY_RUN:-0}"
+  local f want got rcs rc gv
+
+  command -v git  >/dev/null 2>&1 || _gwi_die "git is required"
+  command -v curl >/dev/null 2>&1 || _gwi_die "curl is required"
+  gv="$(git version | sed -E 's/^[^0-9]*([0-9]+)\.([0-9]+).*/\1 \2/')"
+  # shellcheck disable=SC2086  # split "major minor" on purpose
+  set -- $gv
+  if [ "${1:-0}" -lt 2 ] || { [ "${1:-0}" -eq 2 ] && [ "${2:-0}" -lt 38 ]; }; then
+    _gwi_warn "git $1.$2 found; gw-suit is tested with git >= 2.38 (some commands need >= 2.31)."
+  fi
+
+  GWI_TMP="$(mktemp -d 2>/dev/null || mktemp -d -t gwsuit)"
+  trap _gwi_cleanup EXIT
+  for f in $GWI_FILES SHA256SUMS; do
+    curl -fsSL "$base_url/$f" -o "$GWI_TMP/$f" || _gwi_die "download failed: $base_url/$f"
+  done
+  for f in $GWI_FILES; do
+    want="$(awk -v f="$f" '$2 == f || $2 == "*" f { print $1 }' "$GWI_TMP/SHA256SUMS")"
+    got="$(_gwi_sha "$GWI_TMP/$f")"
+    [ -n "$want" ] && [ "$want" = "$got" ] ||
+      _gwi_die "checksum mismatch for $f; nothing was changed"
+  done
+  _gwi_say "downloaded and verified $ref"
+
+  rcs="$(_gwi_rc_files)"
+  [ -n "$rcs" ] || _gwi_die "no rc file found; set GW_SUIT_RC (e.g. GW_SUIT_RC=~/.bashrc)"
+  while IFS= read -r rc; do _gwi_legacy "$rc" "$dest"; done <<EOF
+$rcs
+EOF
+
+  if [ "$dry" = 1 ]; then
+    _gwi_say "dry run: would install to $dest"
+    while IFS= read -r rc; do
+      if _gwi_has_block "$rc"; then
+        _gwi_say "dry run: would check/update the block in $rc"
+      else
+        _gwi_say "dry run: would back up $rc and append:"
+        _gwi_block "$dest" | sed 's/^/    /'
+      fi
+    done <<EOF
+$rcs
+EOF
+    return 0
+  fi
+
+  mkdir -p "$dest"
+  for f in $GWI_FILES; do cp "$GWI_TMP/$f" "$dest/$f"; done
+  chmod +x "$dest/uninstall.sh"
+  printf '%s\n' "$ref" > "$dest/VERSION"
+  _gwi_say "installed to $dest"
+
+  while IFS= read -r rc; do _gwi_install_rc "$rc" "$dest"; done <<EOF
+$rcs
+EOF
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if printf '%s\n' "$rcs" | grep -q '/\.bashrc$' && [ -f "$HOME/.bash_profile" ] &&
+         ! grep -q 'bashrc' "$HOME/.bash_profile"; then
+        _gwi_warn "~/.bash_profile does not source ~/.bashrc, so Git Bash may not load gw-suit."
+        _gwi_warn "  Add this line to ~/.bash_profile:  [ -f ~/.bashrc ] && . ~/.bashrc"
+      fi
+      ;;
+  esac
+  _gwi_say "done. Open a new shell (or source your rc file), then check with: type gwclone"
+}
+
+gw_suit_install "$@"

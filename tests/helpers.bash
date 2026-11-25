@@ -58,3 +58,34 @@ clone_project() {
 
 # commit_in <dir> <msg> -> empty commit in dir
 commit_in() { git -C "$1" commit -q --allow-empty -m "$2"; }
+
+REPO="$BATS_TEST_DIRNAME/.."
+DEST_REL=".local/share/gw-suit"
+
+# file_url <path> -> file:// URL curl understands on every platform
+file_url() {
+  local p
+  p="$(native "$1")"
+  case "$p" in
+    /*) printf 'file://%s\n' "$p" ;;
+    *) printf 'file:///%s\n' "$p" ;;
+  esac
+}
+
+# make_release -> REL dir with the installer's downloadable files + SHA256SUMS; sets BASE_URL
+make_release() {
+  REL="$TEST_TMP/rel"
+  mkdir -p "$REL"
+  cp "$REPO/gw-suit.sh" "$REPO/uninstall.sh" "$REL/"
+  "$REPO/scripts/make-sums.sh" "$REL"
+  BASE_URL="$(file_url "$REL")"
+  export SHELL=/bin/bash
+}
+
+# inst [VAR=value...] -> run install.sh against the local release
+inst() { run env GW_SUIT_BASE_URL="$BASE_URL" GW_SUIT_REF=vtest "$@" bash "$REPO/install.sh"; }
+
+# uninst [VAR=value...] -> run the repo's uninstall.sh
+uninst() { run env "$@" bash "$REPO/uninstall.sh"; }
+
+count_blocks() { grep -c '^# >>> gw-suit >>>' "$1" || true; }
