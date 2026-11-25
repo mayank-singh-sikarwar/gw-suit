@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -s bash gw-suit.sh install.sh uninstall.sh scripts/*.sh tests/helpers.bash
+      - name: SHA256SUMS is current
+        run: scripts/make-sums.sh && git diff --exit-code SHA256SUMS
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  shell: bash }
+          - { os: ubuntu-latest,  shell: zsh }
+          - { os: macos-latest,   shell: zsh }
+          - { os: macos-latest,   shell: bash }
+          - { os: windows-latest, shell: bash }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: install bats
+        run: npm install -g bats@1.13.0
+      - name: install zsh
+        if: matrix.os == 'ubuntu-latest' && matrix.shell == 'zsh'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zsh
+      - name: bats
+        env:
+          GW_TEST_SHELL: ${{ matrix.shell }}
+        run: bats tests/

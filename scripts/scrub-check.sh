@@ -33,7 +33,7 @@ fi
 # 4. Commit metadata: every author/committer email must be a GitHub noreply address.
 if git rev-parse --verify -q HEAD >/dev/null; then
   bad="$(git log --all --format='%an <%ae> | %cn <%ce>' | tr '|' '\n' |
-         sed 's/^ *//' | grep -Ev '<([0-9]+\+)?[^@<>]+@users\.noreply\.github\.com>$|<noreply@github\.com>$' | sort -u)"
+         sed 's/^ *//; s/ *$//' | grep -Ev '<([0-9]+\+)?[^@<>]+@users\.noreply\.github\.com>$|<noreply@github\.com>$' | sort -u)"
   [ -n "$bad" ] && { report "non-noreply identity in history:"; printf '%s\n' "$bad" >&2; }
 fi
 
