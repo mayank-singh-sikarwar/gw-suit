@@ -46,6 +46,27 @@ Installer options (environment variables):
 
 Example: `curl -fsSL …/install.sh | GW_SUIT_DRY_RUN=1 bash`
 
+### Verified install (optional, stronger)
+
+The quick install trusts HTTPS and this GitHub repository. If you want proof that `install.sh` is exactly the file this repository's release workflow published for a tag, verify it before running it. Needs the [GitHub CLI](https://cli.github.com/) 2.81 or newer.
+
+```bash
+tag=v1.0.0
+repo=mayank-singh-sikarwar/gw-suit
+curl -fsSLO "https://github.com/$repo/releases/download/$tag/install.sh"
+
+# 1. The file is the one attached to the (immutable) release
+gh release verify-asset "$tag" install.sh -R "$repo"
+
+# 2. The file was produced by this repo's release workflow from that tag
+gh attestation verify install.sh -R "$repo" \
+  --signer-workflow "$repo/.github/workflows/release.yml" --source-ref "refs/tags/$tag"
+
+bash install.sh
+```
+
+`install.sh` contains the SHA-256 checksums of the two files it downloads and refuses anything that doesn't match, so verifying `install.sh` covers the whole install. `gw-suit.sh`, `uninstall.sh` and `SHA256SUMS` are attached to the release too, if you want to check them yourself (`gh release verify-asset "$tag" <file> -R "$repo"`).
+
 ### Update
 
 Run the install command again with the newer tag.
@@ -155,7 +176,9 @@ Without `GW_BASE_PREFIX`, `16` just means a branch literally called `16`.
 
 ## Safety notes
 
-- **Install integrity.** The install command is pinned to a release tag, and the installer checks every file against `SHA256SUMS` from the same tag before writing anything. That catches broken, truncated or mixed-version downloads. It does not protect against a compromised GitHub account; if that matters to you, read `install.sh` first (it's short) or run it with `GW_SUIT_DRY_RUN=1`.
+- **Network tampering** is prevented by HTTPS: `curl` checks GitHub's certificate, and `-f` makes it fail rather than save an error page.
+- **Install integrity.** The installer carries the SHA-256 checksums of the files it downloads and checks them before writing anything. That catches broken, truncated or mixed-version downloads, and files changed on the server after the installer was released.
+- **Tampering at the source.** Releases are immutable (their tag and files can't be changed after publishing) and their files carry signed build provenance. Use the [verified install](#verified-install-optional-stronger) to check both before running anything. The quick `curl | bash` install skips that check and trusts this repository as it is today.
 - **Truncated downloads.** The installer's work happens in a function called on its last line, so a download cut off half way runs nothing.
 - **Your rc files.** Every change is preceded by a timestamped backup next to the file (`~/.bashrc.gw-suit.bak.<time>`).
 

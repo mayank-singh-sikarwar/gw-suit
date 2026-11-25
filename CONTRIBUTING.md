@@ -25,8 +25,8 @@ gw-suit is licensed under [PolyForm Noncommercial 1.0.0](LICENSE). By opening a 
 gw-suit.sh            the commands; sourced by the user's shell (bash and zsh)
 install.sh            one-line installer (bash 3.2+)
 uninstall.sh          uninstaller (bash 3.2+)
-SHA256SUMS            checksums the installer verifies; generated, never hand-edited
-scripts/make-sums.sh  regenerates SHA256SUMS
+SHA256SUMS            checksums of the release files; generated, never hand-edited
+scripts/make-sums.sh  regenerates SHA256SUMS and the checksums built into install.sh
 scripts/scrub-check.sh  checks for personal paths, e-mail addresses and identities
 tests/                bats tests; helpers.bash builds throwaway repos, no network needed
 .github/workflows/    CI
@@ -47,11 +47,11 @@ brew install shellcheck        # or: apt install shellcheck / scoop install shel
 shellcheck -s bash gw-suit.sh install.sh uninstall.sh scripts/*.sh tests/helpers.bash
 bats tests/                    # bash
 GW_TEST_SHELL=zsh bats tests/  # the same tests with the commands running in zsh
-scripts/make-sums.sh && git diff --exit-code SHA256SUMS
+scripts/make-sums.sh && git diff --exit-code install.sh SHA256SUMS
 scripts/scrub-check.sh
 ```
 
-- **If you change `gw-suit.sh` or `uninstall.sh`, run `scripts/make-sums.sh` and commit the updated `SHA256SUMS`.** CI fails otherwise, because the installer would reject the files.
+- **If you change `gw-suit.sh`, `uninstall.sh` or `install.sh`, run `scripts/make-sums.sh` and commit the updated `install.sh` and `SHA256SUMS`.** The installer verifies downloads against checksums built into it, so CI fails (and the installer would refuse the files) if they are stale.
 - `scrub-check.sh` fails if tracked files contain home-directory paths, e-mail addresses or IP addresses, or if a commit uses a non-noreply e-mail. Use [your GitHub noreply address](https://docs.github.com/en/account-and-profile/setting-up-and-managing-your-personal-account-on-github/managing-email-preferences/setting-your-commit-email-address) for commits to this repo: `git config user.email <id>+<user>@users.noreply.github.com`.
 
 ## Code conventions
@@ -86,4 +86,7 @@ scripts/scrub-check.sh
 
 1. Update `CHANGELOG.md` and `GW_SUIT_VERSION` in `gw-suit.sh`; bump `GWI_DEFAULT_REF` in `install.sh` and the version in the README install line.
 2. `scripts/make-sums.sh`, then merge the PR.
-3. Tag `vX.Y.Z` on `main`, push the tag, and create a GitHub release.
+3. Tag `vX.Y.Z` on `main` and push the tag. The `release` workflow checks that the versions match the tag and the checksums are current. It then attests `install.sh`, `gw-suit.sh`, `uninstall.sh` and `SHA256SUMS`, and publishes them as an immutable GitHub release with the CHANGELOG section as notes.
+4. Check: `gh release verify vX.Y.Z -R mayank-singh-sikarwar/gw-suit`, then follow the README's verified install in a throwaway `$HOME`.
+
+Repository settings that the security model relies on: release immutability on, a tag ruleset that blocks deleting or moving `v*` tags, a ruleset on `main` (PRs only, required CI checks, no force-push or deletion), and 2FA on the maintainer account.

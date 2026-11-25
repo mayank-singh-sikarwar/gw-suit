@@ -17,7 +17,7 @@ jobs:
       - name: shellcheck
         run: shellcheck -s bash gw-suit.sh install.sh uninstall.sh scripts/*.sh tests/helpers.bash
       - name: SHA256SUMS is current
-        run: scripts/make-sums.sh && git diff --exit-code SHA256SUMS
+        run: scripts/make-sums.sh && git diff --exit-code install.sh SHA256SUMS
 
   test:
     strategy:

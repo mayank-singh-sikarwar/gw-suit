@@ -1,0 +1,57 @@
+name: release
+
+# Runs when a v* tag is pushed. Attaches the installer files to an (immutable) GitHub
+# release and signs build provenance for them, so users can verify downloads with
+#   gh release verify-asset <tag> install.sh -R mayank-singh-sikarwar/gw-suit
+#   gh attestation verify install.sh -R mayank-singh-sikarwar/gw-suit
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write          # create the release
+      id-token: write          # sign the attestation (Sigstore via GitHub OIDC)
+      attestations: write      # store the attestation
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versions match the tag
+        run: |
+          tag="$GITHUB_REF_NAME"
+          grep -qx "GWI_DEFAULT_REF=\"$tag\"" install.sh || { echo "install.sh GWI_DEFAULT_REF != $tag"; exit 1; }
+          grep -qx "GW_SUIT_VERSION=\"${tag#v}\"" gw-suit.sh || { echo "gw-suit.sh GW_SUIT_VERSION != ${tag#v}"; exit 1; }
+          grep -q "/gw-suit/$tag/install.sh" README.md || { echo "README install line is not $tag"; exit 1; }
+          grep -q "^## \[${tag#v}\]" CHANGELOG.md || { echo "CHANGELOG has no ${tag#v} section"; exit 1; }
+
+      - name: Checksums are current
+        run: scripts/make-sums.sh && git diff --exit-code install.sh SHA256SUMS
+
+      - name: Collect release files
+        run: |
+          mkdir dist
+          cp install.sh uninstall.sh gw-suit.sh SHA256SUMS dist/
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }' CHANGELOG.md > notes.md
+
+      - name: Attest build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: 'dist/*'
+
+      - name: Create draft release, upload files, then publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md dist/*
+          gh release edit "$GITHUB_REF_NAME" --draft=false

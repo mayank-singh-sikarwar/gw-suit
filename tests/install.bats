@@ -13,7 +13,7 @@ setup() {
   [ "$status" -eq 0 ]
   [ -f "$HOME/$DEST_REL/gw-suit.sh" ]
   [ -x "$HOME/$DEST_REL/uninstall.sh" ]
-  [ "$(cat "$HOME/$DEST_REL/VERSION")" = "vtest" ]
+  [ "$(cat "$HOME/$DEST_REL/VERSION")" = "v1.0.0" ]
   [ "$(count_blocks "$HOME/.bashrc")" -eq 1 ]
   grep -qx 'export KEEP=1' "$HOME/.bashrc"
   ls "$HOME"/.bashrc.gw-suit.bak.* >/dev/null
@@ -129,4 +129,33 @@ setup() {
   inst GW_SUIT_RC="$HOME/.bashrc"
   [[ "$output" == *"bash_profile does not source"* ]]
   [ "$(cat "$HOME/.bash_profile")" = "export X=1" ]
+}
+
+@test "default ref: verifies against the checksums built into install.sh (no SHA256SUMS download)" {
+  rm "$REL/SHA256SUMS"
+  inst GW_SUIT_RC="$HOME/.bashrc"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checksums built into this installer"* ]]
+}
+
+@test "built-in checksums reject a release file that SHA256SUMS would accept" {
+  echo '# changed' >> "$REL/gw-suit.sh"
+  "$REPO/scripts/make-sums.sh" "$REL"
+  inst GW_SUIT_RC="$HOME/.bashrc"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"checksum mismatch for gw-suit.sh"* ]]
+  [ ! -e "$HOME/$DEST_REL" ]
+}
+
+@test "another ref: falls back to that ref's SHA256SUMS and warns" {
+  inst GW_SUIT_RC="$HOME/.bashrc" GW_SUIT_REF=v0.9.9
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"checking against SHA256SUMS from v0.9.9 only"* ]]
+  [ "$(cat "$HOME/$DEST_REL/VERSION")" = "v0.9.9" ]
+}
+
+@test "built-in checksums match the repo files (run scripts/make-sums.sh after editing)" {
+  cp "$REPO/install.sh" "$REPO/gw-suit.sh" "$REPO/uninstall.sh" "$TEST_TMP/"
+  "$REPO/scripts/make-sums.sh" "$TEST_TMP"
+  cmp "$TEST_TMP/install.sh" "$REPO/install.sh"
 }

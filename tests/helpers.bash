@@ -83,7 +83,7 @@ make_release() {
 }
 
 # inst [VAR=value...] -> run install.sh against the local release
-inst() { run env GW_SUIT_BASE_URL="$BASE_URL" GW_SUIT_REF=vtest "$@" bash "$REPO/install.sh"; }
+inst() { run env GW_SUIT_BASE_URL="$BASE_URL" "$@" bash "$REPO/install.sh"; }
 
 # uninst [VAR=value...] -> run the repo's uninstall.sh
 uninst() { run env "$@" bash "$REPO/uninstall.sh"; }
