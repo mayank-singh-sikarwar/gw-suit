@@ -12,7 +12,7 @@ setup() { setup_common; make_origin main dev; }
   [ -d "$TEST_TMP/here/origin/main" ]
   [ "$(git -C "$TEST_TMP/here/origin/main" rev-parse --abbrev-ref '@{u}')" = "origin/main" ]
   [ "$(git -C "$TEST_TMP/here/origin" config remote.origin.fetch)" = "+refs/heads/*:refs/remotes/origin/*" ]
-  [[ "${lines[-1]}" == */here/origin/main ]]
+  [[ "${lines[${#lines[@]}-1]}" == */here/origin/main ]]
 }
 
 @test "gwclone uses GW_ROOT, then PROJECTS_ROOT" {
